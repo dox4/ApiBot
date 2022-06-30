@@ -1,4 +1,4 @@
-use http::{self, HeaderMap, Version};
+use http::{self, HeaderMap};
 
 use reqwest::blocking::{Client, Request, Response};
 use reqwest::header::{HeaderName, HeaderValue};
@@ -8,25 +8,15 @@ use std::io::Read;
 use crate::db;
 
 pub(crate) type Method = http::Method;
+pub(crate) type Version = http::Version;
 
-pub(crate) fn to_http_version(version: f64) -> Version {
+pub(crate) fn from_http_version(version: Version) -> String {
     match version {
-        0.9 => Version::HTTP_09,
-        1.0 => Version::HTTP_10,
-        1.1 => Version::HTTP_11,
-        2.0 => Version::HTTP_2,
-        3.0 => Version::HTTP_3,
-        _ => panic!("bala bala"),
-    }
-}
-
-pub(crate) fn from_http_version(version: Version) -> f64 {
-    match version {
-        Version::HTTP_09 => 0.9,
-        Version::HTTP_10 => 1.0,
-        Version::HTTP_11 => 1.1,
-        Version::HTTP_2 => 2.0,
-        Version::HTTP_3 => 3.0,
+        Version::HTTP_09 => "0.9".to_string(),
+        Version::HTTP_10 => "1.0".to_string(),
+        Version::HTTP_11 => "1.1".to_string(),
+        Version::HTTP_2 => "2.0".to_string(),
+        Version::HTTP_3 => "3.0".to_string(),
         _ => panic!("unrecognized http version."),
     }
 }
@@ -35,7 +25,7 @@ pub(crate) fn make_request(
     url: String,
     method: Method,
     headers: Vec<(HeaderName, HeaderValue)>,
-    http: f64,
+    http_version: Version,
     data: Option<String>,
 ) -> Result<Request, Box<dyn std::error::Error>> {
     let url = if !url.starts_with("http") {
@@ -51,7 +41,7 @@ pub(crate) fn make_request(
     let builder = client
         .request(method, url)
         .headers(hm)
-        .version(to_http_version(http));
+        .version(http_version);
     // if let Some(data) = data {
     //     match serde_json::from_slice::<HashMap<String, serde_json::Value>>(data.as_bytes()) {
     //         Ok(json) => Ok(builder.json(&json).build()?),

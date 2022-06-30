@@ -54,7 +54,8 @@ const _CREATE_TABLE_SCRIPT: &str = "CREATE TABLE IF NOT EXISTS apibot_script (
     deleted_at TEXT NULL
 );";
 
-const _CHECK_IF_DEFAULT_GROUP_EXISTS: &str = "SELECT * FROM apibot_namespace WHERE name = 'default';";
+const _CHECK_IF_DEFAULT_GROUP_EXISTS: &str =
+    "SELECT * FROM apibot_namespace WHERE name = 'default';";
 const _INSERT_DEFAULT_GROUP: &str =
     "INSERT INTO apibot_namespace VALUES ('default', 'the default group of ApiBot', ?1, NULL);";
 
@@ -71,11 +72,16 @@ pub(crate) fn init() -> Result<(), Error> {
     let db = path_to_db();
     println!("{}", db);
     let conn = Connection::open(db)?;
-    conn.execute(_CREATE_TABLE_VERSION, []).expect(_CREATE_TABLE_VERSION);
-    conn.execute(_CREATE_TABLE_NAMESPACE, []).expect(_CREATE_TABLE_NAMESPACE);
-    conn.execute(_CREATE_TABLE_REQUEST, []).expect(_CREATE_TABLE_REQUEST);
-    conn.execute(_CREATE_TABLE_RESPONSE, []).expect(_CREATE_TABLE_RESPONSE);
-    conn.execute(_CREATE_TABLE_SCRIPT, []).expect(_CREATE_TABLE_SCRIPT);
+    conn.execute(_CREATE_TABLE_VERSION, [])
+        .expect(_CREATE_TABLE_VERSION);
+    conn.execute(_CREATE_TABLE_NAMESPACE, [])
+        .expect(_CREATE_TABLE_NAMESPACE);
+    conn.execute(_CREATE_TABLE_REQUEST, [])
+        .expect(_CREATE_TABLE_REQUEST);
+    conn.execute(_CREATE_TABLE_RESPONSE, [])
+        .expect(_CREATE_TABLE_RESPONSE);
+    conn.execute(_CREATE_TABLE_SCRIPT, [])
+        .expect(_CREATE_TABLE_SCRIPT);
     // check if default group exists
     let mut stmt = conn.prepare(_CHECK_IF_DEFAULT_GROUP_EXISTS)?;
     let mut rows = stmt.query([])?;
@@ -97,7 +103,7 @@ fn headers_to_string(headers: &reqwest::header::HeaderMap) -> String {
 pub(crate) fn store_request(request: &Request, group: String) -> i64 {
     let db = path_to_db();
     let conn = Connection::open(db).unwrap();
-    let version = http::from_http_version(request.version()).to_string();
+    let version = http::from_http_version(request.version());
     let url = request.url().to_string();
     let headers = headers_to_string(&request.headers());
     let body = if let Some(body) = request.body() {

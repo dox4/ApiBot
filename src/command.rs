@@ -29,8 +29,8 @@ pub(crate) struct SendOptions {
     pub(crate) method: Method,
     #[clap(short = 'H',long, value_parser = parse_header, multiple = true, help = "headers of the HTTP request.")]
     pub(crate) headers: Vec<(HeaderName, HeaderValue)>,
-    #[clap(long, default_value = "1.1", help = "http version, default is 1.1.")]
-    pub(crate) http: f64,
+    #[clap(long, default_value = "1.1", value_parser = parse_http_version, help = "http version, default is 1.1.")]
+    pub(crate) http: crate::http::Version,
     #[clap(short, long, help = "data to send with the request.")]
     pub(crate) data: Option<String>,
 }
@@ -55,14 +55,25 @@ fn parse_header(
     Ok((s[0..idx].parse()?, s[idx + 1..].parse()?))
 }
 
+fn parse_http_version(
+    s: &str,
+) -> Result<crate::http::Version, Box<dyn Error + Send + Sync + 'static>> {
+    match s {
+        "0.9" => Ok(crate::http::Version::HTTP_09),
+        "1.0" => Ok(crate::http::Version::HTTP_10),
+        "1.1" => Ok(crate::http::Version::HTTP_11),
+        "2.0" => Ok(crate::http::Version::HTTP_2),
+        "3.0" => Ok(crate::http::Version::HTTP_3),
+        _ => panic!("unrecognized http version: {}", s),
+    }
+}
+
 pub(crate) fn execute() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     match args.commands {
         SubCommand::List {} => todo!(),
         SubCommand::Retry {} => todo!(),
-        SubCommand::Send {
-            options
-        } => http::send(options)?,
+        SubCommand::Send { options } => http::send(options)?,
         SubCommand::Describe {} => todo!(),
     };
     Ok(())
