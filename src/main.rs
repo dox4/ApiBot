@@ -4,11 +4,12 @@ mod command;
 mod db;
 mod time;
 mod http;
+mod util;
 
 // check if first runnning
 fn check_if_first_running() {
-    use std::path::Path;
-    let p = Path::new(db::DB_PATH);
+    let p = util::app_home_dir();
+    println!("{:?}, {:?}", p, p.exists());
     if !p.exists() {
         fs::create_dir_all(p).unwrap();
         db::init().unwrap();
@@ -16,9 +17,7 @@ fn check_if_first_running() {
     // let version = env!("CARGO_PKG_VERSION");
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     check_if_first_running();
-    command::execute().await?;
-    Ok(())
+    command::execute().unwrap();
 }

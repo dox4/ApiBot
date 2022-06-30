@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 
+use crate::db;
 use crate::http::{self, Method};
 
 #[derive(Parser, Debug)]
@@ -13,25 +14,32 @@ pub(crate) struct Args {
     #[clap(subcommand)]
     pub(crate) commands: SubCommand,
 }
+
+#[derive(Parser, Debug)]
+pub(crate) struct SendOptions {
+    #[clap(value_parser, help = "url to send request to.")]
+    pub(crate) url: String,
+    #[clap(
+        short = 'X',
+        long,
+        value_parser,
+        default_value = "GET",
+        help = "HTTP request method, default is 'GET'."
+    )]
+    pub(crate) method: Method,
+    #[clap(short = 'H',long, value_parser = parse_header, multiple = true, help = "headers of the HTTP request.")]
+    pub(crate) headers: Vec<(HeaderName, HeaderValue)>,
+    #[clap(long, default_value = "1.1", help = "http version, default is 1.1.")]
+    pub(crate) http: f64,
+    #[clap(short, long, help = "data to send with the request.")]
+    pub(crate) data: Option<String>,
+}
+
 #[derive(Subcommand, Debug)]
 pub(crate) enum SubCommand {
     Send {
-        #[clap(value_parser, help = "url to send request to.")]
-        url: String,
-        #[clap(
-            short = 'X',
-            long,
-            value_parser,
-            default_value = "GET",
-            help = "HTTP request method, default is 'GET'."
-        )]
-        method: Method,
-        #[clap(short = 'H',long, value_parser = parse_header, multiple = true, help = "headers of the HTTP request.")]
-        headers: Vec<(HeaderName, HeaderValue)>,
-        #[clap(long, default_value = "1.1", help = "http version, default is 1.1.")]
-        http: f64,
-        #[clap(short, long, help = "data to send with the request.")]
-        data: Option<String>,
+        #[clap(flatten)]
+        options: SendOptions,
     },
     List {},
     Retry {},
@@ -47,32 +55,14 @@ fn parse_header(
     Ok((s[0..idx].parse()?, s[idx + 1..].parse()?))
 }
 
-pub(crate) async fn execute() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn execute() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     match args.commands {
-        // SubCommand::Get { url } => {
-        //     let req = client.get(url);
-        //     let req = req.build()?;
-        //     let resp = client.execute(req).await?;
-        //     if let Some(ct) = resp.headers().get(reqwest::header::CONTENT_TYPE) {
-        //         if ct.to_str().unwrap().contains("application/json") {
-        //             let obj = resp.json::<HashMap<String, Value>>().await?;
-        //             println!("{}", serde_json::to_string_pretty(&obj).unwrap());
-        //         } else {
-        //             println!("{}", resp.text().await?);
-        //         }
-        //     }
-        // }
-        // SubCommand::Post { url: _ } => todo!(),
         SubCommand::List {} => todo!(),
         SubCommand::Retry {} => todo!(),
         SubCommand::Send {
-            url,
-            method,
-            headers,
-            http,
-            data,
-        } => http::send(url, method, headers, http, data).await?,
+            options
+        } => http::send(options)?,
         SubCommand::Describe {} => todo!(),
     };
     Ok(())
