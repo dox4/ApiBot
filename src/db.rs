@@ -1,9 +1,13 @@
+use std::borrow::BorrowMut;
+use std::cell::RefMut;
 use std::collections::HashMap;
 use std::io::Read;
 
 use reqwest::blocking::Request;
 use reqwest::blocking::Response;
 use rusqlite::{self, Connection, Error};
+use serde::de::DeserializeOwned;
+use serde_rusqlite::from_rows;
 
 use crate::http;
 use crate::time;
@@ -26,6 +30,7 @@ const _CREATE_TABLE_NAMESPACE: &str = "CREATE TABLE IF NOT EXISTS apibot_namespa
 const _CREATE_TABLE_REQUEST: &str = "CREATE TABLE IF NOT EXISTS apibot_request (
     id INTEGER PRIMARY KEY,
     namespace TEXT NOT NULL,
+    method TEXT NOT NULL,
     version TEXT NOT NULL,
     url TEXT NOT NULL,
     header TEXT NOT NULL,
@@ -37,6 +42,7 @@ const _CREATE_TABLE_REQUEST: &str = "CREATE TABLE IF NOT EXISTS apibot_request (
 
 const _CREATE_TABLE_RESPONSE: &str = "CREATE TABLE IF NOT EXISTS apibot_response (
     id INTEGER PRIMARY KEY,
+    namespace TEXT NOT NULL,
     request_id INTEGER NOT NULL,
     status_code INTEGER NOT NULL,
     header TEXT NOT NULL,
@@ -70,7 +76,6 @@ fn path_to_db() -> String {
 pub(crate) fn init() -> Result<(), Error> {
     // assume the DB_PATH already exists;
     let db = path_to_db();
-    println!("{}", db);
     let conn = Connection::open(db)?;
     conn.execute(_CREATE_TABLE_VERSION, [])
         .expect(_CREATE_TABLE_VERSION);
@@ -86,12 +91,10 @@ pub(crate) fn init() -> Result<(), Error> {
     let mut stmt = conn.prepare(_CHECK_IF_DEFAULT_GROUP_EXISTS)?;
     let mut rows = stmt.query([])?;
     if let Ok(None) = rows.next() {
-        println!("insert the default group...");
         conn.execute(_INSERT_DEFAULT_GROUP, &[&time::now()])?;
     }
     Ok(())
 }
-
 fn headers_to_string(headers: &reqwest::header::HeaderMap) -> String {
     let map: HashMap<String, String> = headers
         .iter()
@@ -99,11 +102,11 @@ fn headers_to_string(headers: &reqwest::header::HeaderMap) -> String {
         .collect();
     serde_json::to_string(&map).unwrap().to_string()
 }
-
-pub(crate) fn store_request(request: &Request, group: String) -> i64 {
+pub(crate) fn store_request(request: &Request, namespace: String) -> i64 {
     let db = path_to_db();
     let conn = Connection::open(db).unwrap();
     let version = http::from_http_version(request.version());
+    let method = request.method().to_string();
     let url = request.url().to_string();
     let headers = headers_to_string(&request.headers());
     let body = if let Some(body) = request.body() {
@@ -112,39 +115,41 @@ pub(crate) fn store_request(request: &Request, group: String) -> i64 {
         "".to_string()
     };
     conn.execute(
-    "INSERT INTO apibot_request (namespace, version, url, header, body, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-        [group, version, url, headers, body, time::now()],
+    "INSERT INTO apibot_request (namespace, method, version, url, header, body, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+        [namespace, method, version, url, headers, body, time::now()],
     )
     .unwrap();
     conn.last_insert_rowid()
 }
 
-pub(crate) fn store_response(request_id: i64, resp: &Response, group: String) {
+pub(crate) fn store_response(
+    request_id: i64,
+    mut resp: RefMut<Response>,
+    namespace: String,
+) -> String {
     let db = path_to_db();
     let conn = Connection::open(db).unwrap();
     let request_id = request_id.to_string();
     let status_code = resp.status().to_string();
     let headers = headers_to_string(&resp.headers());
-    // let body = if resp
-    //     .headers()
-    //     .get(reqwest::header::CONTENT_TYPE)
-    //     .unwrap_or(&reqwest::header::HeaderValue::from_str("application/json").unwrap())
-    //     .to_str()
-    //     .unwrap()
-    //     .contains("application/json")
-    // {
-    //     serde_json::to_string(resp.json::<HashMap<String, serde_json::Value>>().await.unwrap()).unwrap()
-    // } else {
-    //     resp.text().await.unwrap().to_string()
-    // };
-    //
-    //  let body = match resp.json::<HashMap<String, serde_json::Value>>().await {
-    //      Ok(_) => todo!(),
-    //      Err(_) => todo!(),
-    //  };
-    //  conn.execute(
-    //      "INSERT INTO apibot_response (request_id, status_code, header, body, received_at) VALUES ();",
-    //      [request_id, status_code, headers, body, time::now()],
-    //  )
-    //  .unwrap();
+    let mut buf: Vec<u8> = Vec::new();
+    resp.borrow_mut().read_to_end(&mut buf).unwrap();
+    let body = unsafe { String::from_utf8_unchecked(buf) };
+    conn.execute(
+        "INSERT INTO apibot_response (namespace, request_id, status_code, header, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+        [namespace, request_id, status_code, headers, body.clone(), time::now()],
+    )
+    .unwrap();
+    body
+}
+
+pub(crate) fn retrive_resource<T>(limit: u32) -> Vec<T>
+where
+    T: DeserializeOwned,
+{
+    let db = path_to_db();
+    let conn = Connection::open(db).unwrap();
+    let mut stmt = conn.prepare(format!("SELECT * FROM apibot_request WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT {}", limit).as_str()).unwrap();
+    let res = from_rows::<T>(stmt.query([]).unwrap());
+    res.map(|r| r.unwrap()).collect::<Vec<T>>()
 }

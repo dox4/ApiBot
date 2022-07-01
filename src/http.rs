@@ -1,3 +1,4 @@
+use clap::Result;
 use http::{self, HeaderMap};
 
 use reqwest::blocking::{Client, Request, Response};
@@ -65,11 +66,13 @@ pub(crate) fn send(options: crate::command::SendOptions) -> Result<(), Box<dyn s
     let request_id = db::store_request(&request, "default".to_string());
     let client = reqwest::blocking::Client::new();
     let resp = client.execute(request).unwrap();
-    db::store_response(request_id, &resp, "default".to_string());
     let resp = RefCell::new(resp);
-    let mut buf: Vec<u8> = Vec::new();
-    let size = resp.borrow_mut().read_to_end(&mut buf).unwrap();
-    let j = serde_json::from_slice::<serde_json::Value>(&buf[..]).unwrap();
+    let body = db::store_response(request_id, resp.borrow_mut(), "default".to_string());
+    let j = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     println!("{}", serde_json::to_string_pretty(&j).unwrap());
+    Ok(())
+}
+
+pub(crate) fn retry(options: crate::command::RetryOptions) -> Result<()> {
     Ok(())
 }

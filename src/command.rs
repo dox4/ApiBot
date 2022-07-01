@@ -1,3 +1,4 @@
+use core::panic;
 use std::error::Error;
 
 use clap::{Parser, Subcommand};
@@ -35,15 +36,62 @@ pub(crate) struct SendOptions {
     pub(crate) data: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum ResourceType {
+    Request,
+    Response,
+    Script,
+}
+
+#[derive(Parser, Debug)]
+pub(crate) struct ListOptions {
+    #[clap(value_parser = parse_resource_type)]
+    pub(crate) resource_type: ResourceType,
+    #[clap(short, long, default_value = "10", value_parser)]
+    pub(crate) limit: u32,
+}
+
+#[derive(Parser, Debug)]
+pub(crate) struct RetryOptions {
+    #[clap(value_parser)]
+    pub(crate) request_id: u32,
+}
+
+#[derive(Parser, Debug)]
+pub(crate) struct DescribeOptions {
+    #[clap(value_parser = parse_resource_type)]
+    pub(crate) resource_type: ResourceType,
+    #[clap(value_parser)]
+    pub(crate) request_id: u32,
+}
+
 #[derive(Subcommand, Debug)]
 pub(crate) enum SubCommand {
     Send {
         #[clap(flatten)]
         options: SendOptions,
     },
-    List {},
-    Retry {},
-    Describe {},
+    List {
+        #[clap(flatten)]
+        options: ListOptions,
+    },
+    Retry {
+        #[clap(flatten)]
+        options: RetryOptions,
+    },
+    Describe {
+        #[clap(flatten)]
+        options: DescribeOptions,
+    },
+}
+
+fn parse_resource_type(s: &str) -> Result<ResourceType, Box<dyn Error + Send + Sync + 'static>> {
+    match s {
+        "req" | "request" => Ok(ResourceType::Request),
+        "resp" | "response" => Ok(ResourceType::Response),
+        "script" => Ok(ResourceType::Script),
+        _ => panic!("unrecognized resource type {}", s),
+    }
 }
 
 fn parse_header(
@@ -71,10 +119,32 @@ fn parse_http_version(
 pub(crate) fn execute() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     match args.commands {
-        SubCommand::List {} => todo!(),
-        SubCommand::Retry {} => todo!(),
         SubCommand::Send { options } => http::send(options)?,
-        SubCommand::Describe {} => todo!(),
+        SubCommand::List { options } => list(options),
+        SubCommand::Retry { options } => todo!(),
+        SubCommand::Describe { options } => todo!(),
     };
     Ok(())
+}
+
+fn list(options: ListOptions) {
+    match options.resource_type {
+        ResourceType::Request => {
+            let table = db::retrive_resource::<crate::model::RequestTable>(options.limit);
+            if table.len() > 0 {
+                crate::display::display(&table);
+            } else {
+                println!("You have not sent any request yet.");
+            }
+        },
+        ResourceType::Response => {
+            let table = db::retrive_resource::<crate::model::ResponseTable>(options.limit);
+            if table.len() > 0 {
+                crate::display::display(&table);
+            } else {
+                println!("You have not got any response yet.");
+            }
+        },
+        ResourceType::Script => todo!(),
+    }
 }
