@@ -42,8 +42,10 @@ impl ToTable for crate::model::ResponseTable {
     fn title() -> Row {
         row![
             Cell::new("ID"),
+            Cell::new("Request ID"),
             Cell::new("Status"),
             Cell::new("Response Body"),
+            Cell::new("Received At"),
             Cell::new("Namespace")
         ]
     }
@@ -51,8 +53,10 @@ impl ToTable for crate::model::ResponseTable {
     fn to_table_row(&self) -> Row {
         row![
             Cell::new(&self.id.to_string()),
+            Cell::new(&self.request_id.to_string()),
             Cell::new(&self.status_code.to_string()),
             Cell::new(&self.body),
+            Cell::new(&self.received_at),
             Cell::new(&self.namespace),
         ]
     }

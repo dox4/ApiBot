@@ -6,6 +6,7 @@ use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 
 use crate::db;
+use crate::http::retry;
 use crate::http::{self, Method};
 
 #[derive(Parser, Debug)]
@@ -54,7 +55,7 @@ pub(crate) struct ListOptions {
 #[derive(Parser, Debug)]
 pub(crate) struct RetryOptions {
     #[clap(value_parser)]
-    pub(crate) request_id: u32,
+    pub(crate) request_id: i64,
 }
 
 #[derive(Parser, Debug)]
@@ -62,7 +63,7 @@ pub(crate) struct DescribeOptions {
     #[clap(value_parser = parse_resource_type)]
     pub(crate) resource_type: ResourceType,
     #[clap(value_parser)]
-    pub(crate) request_id: u32,
+    pub(crate) request_id: i64,
 }
 
 #[derive(Subcommand, Debug)]
@@ -103,7 +104,7 @@ fn parse_header(
     Ok((s[0..idx].parse()?, s[idx + 1..].parse()?))
 }
 
-fn parse_http_version(
+pub(crate) fn parse_http_version(
     s: &str,
 ) -> Result<crate::http::Version, Box<dyn Error + Send + Sync + 'static>> {
     match s {
@@ -121,8 +122,8 @@ pub(crate) fn execute() -> Result<(), Box<dyn std::error::Error>> {
     match args.commands {
         SubCommand::Send { options } => http::send(options)?,
         SubCommand::List { options } => list(options),
-        SubCommand::Retry { options } => todo!(),
-        SubCommand::Describe { options } => todo!(),
+        SubCommand::Retry { options } => retry(options),
+        SubCommand::Describe { options } => describe(options),
     };
     Ok(())
 }
@@ -130,21 +131,28 @@ pub(crate) fn execute() -> Result<(), Box<dyn std::error::Error>> {
 fn list(options: ListOptions) {
     match options.resource_type {
         ResourceType::Request => {
-            let table = db::retrive_resource::<crate::model::RequestTable>(options.limit);
+            let table = db::retrive_resources::<crate::model::RequestTable>(options.limit);
             if table.len() > 0 {
                 crate::display::display(&table);
             } else {
                 println!("You have not sent any request yet.");
             }
-        },
+        }
         ResourceType::Response => {
-            let table = db::retrive_resource::<crate::model::ResponseTable>(options.limit);
+            let table = db::retrive_resources::<crate::model::ResponseTable>(options.limit);
             if table.len() > 0 {
                 crate::display::display(&table);
             } else {
                 println!("You have not got any response yet.");
             }
-        },
+        }
         ResourceType::Script => todo!(),
     }
+}
+
+fn describe(options: DescribeOptions) {
+    println!(
+        "resource type: {:?}, id: {}",
+        options.resource_type, options.request_id
+    );
 }

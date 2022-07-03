@@ -7,9 +7,12 @@ use reqwest::blocking::Request;
 use reqwest::blocking::Response;
 use rusqlite::{self, Connection, Error};
 use serde::de::DeserializeOwned;
+use serde_rusqlite::from_row;
 use serde_rusqlite::from_rows;
 
 use crate::http;
+use crate::model::RequestTable;
+use crate::model::SQLiteTable;
 use crate::time;
 use crate::util;
 pub(crate) const DB_NAME: &str = "apibot_db";
@@ -73,10 +76,14 @@ fn path_to_db() -> String {
         .to_string()
 }
 
-pub(crate) fn init() -> Result<(), Error> {
-    // assume the DB_PATH already exists;
+pub(crate) fn default_conn() -> Connection {
     let db = path_to_db();
-    let conn = Connection::open(db)?;
+    Connection::open(db).unwrap()
+}
+
+pub(crate) fn init() -> Result<(), Error> {
+    let conn = default_conn();
+    // assume the DB_PATH already exists;
     conn.execute(_CREATE_TABLE_VERSION, [])
         .expect(_CREATE_TABLE_VERSION);
     conn.execute(_CREATE_TABLE_NAMESPACE, [])
@@ -103,8 +110,7 @@ fn headers_to_string(headers: &reqwest::header::HeaderMap) -> String {
     serde_json::to_string(&map).unwrap().to_string()
 }
 pub(crate) fn store_request(request: &Request, namespace: String) -> i64 {
-    let db = path_to_db();
-    let conn = Connection::open(db).unwrap();
+    let conn = default_conn();
     let version = http::from_http_version(request.version());
     let method = request.method().to_string();
     let url = request.url().to_string();
@@ -127,10 +133,9 @@ pub(crate) fn store_response(
     mut resp: RefMut<Response>,
     namespace: String,
 ) -> String {
-    let db = path_to_db();
-    let conn = Connection::open(db).unwrap();
+    let conn = default_conn();
     let request_id = request_id.to_string();
-    let status_code = resp.status().to_string();
+    let status_code = resp.status().as_u16().to_string();
     let headers = headers_to_string(&resp.headers());
     let mut buf: Vec<u8> = Vec::new();
     resp.borrow_mut().read_to_end(&mut buf).unwrap();
@@ -143,13 +148,30 @@ pub(crate) fn store_response(
     body
 }
 
-pub(crate) fn retrive_resource<T>(limit: u32) -> Vec<T>
+pub(crate) fn retrive_resources<T>(limit: u32) -> Vec<T>
 where
-    T: DeserializeOwned,
+    T: DeserializeOwned + SQLiteTable,
 {
-    let db = path_to_db();
-    let conn = Connection::open(db).unwrap();
-    let mut stmt = conn.prepare(format!("SELECT * FROM apibot_request WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT {}", limit).as_str()).unwrap();
+    let conn = default_conn();
+    let sql = T::retrive_stmt(limit);
+    let mut stmt = conn.prepare(sql.as_str()).unwrap();
     let res = from_rows::<T>(stmt.query([]).unwrap());
     res.map(|r| r.unwrap()).collect::<Vec<T>>()
+}
+
+pub(crate) fn retrive_resource_by_id<T>(id: i64) -> T
+where
+    T: DeserializeOwned + SQLiteTable,
+{
+    let conn = default_conn();
+    let sql = RequestTable::retrive_by_id(id);
+    let mut stmt = conn.prepare(sql.as_str()).unwrap();
+    if !stmt.exists([]).unwrap() {
+        panic!(
+            "You've given a wrong id that could not retrive any record: {}",
+            id
+        )
+    }
+    stmt.query_row([], |row| Ok(from_row::<T>(row).unwrap()))
+        .unwrap()
 }
